@@ -358,10 +358,21 @@ class GeminiTranslationProvider:
         }
 
         # ── Call API with retry ────────────────────────
-        data = await self._fetch_with_retry(url, payload)
+        try:
+            data = await self._fetch_with_retry(url, payload)
+            text = self._extract_text(data)
+        except TranslationError as exc:
+            # If the batch was blocked by safety filters and has >1 segments, fallback
+            if len(batch) > 1 and ("blocked" in str(exc).lower() or "safety" in str(exc).lower()):
+                logger.warning(
+                    "[gemini] Batch blocked by safety filter: {}. "
+                    "Falling back to per-segment translation to isolate bad segments.",
+                    exc
+                )
+                return await self._per_segment_fallback(batch, target_lang)
+            raise
 
         # ── Validate response ──────────────────────────
-        text = self._extract_text(data)
 
         # Log usage
         meta = data.get("usageMetadata", {})
@@ -399,12 +410,23 @@ class GeminiTranslationProvider:
         batch: list[str],
         target_lang: str,
     ) -> list[str]:
-        """Fallback: translate each block individually when count mismatches."""
+        """Fallback: translate each block individually when count mismatches or safety blocks."""
         results: list[str] = []
         for i, block in enumerate(batch):
             logger.info("[gemini] Fallback segment {}/{}", i + 1, len(batch))
-            translated = await self._translate_batch([block], target_lang)
-            results.extend(translated)
+            try:
+                translated = await self._translate_batch([block], target_lang)
+                results.extend(translated)
+            except TranslationError as exc:
+                if "blocked" in str(exc).lower() or "safety" in str(exc).lower():
+                    logger.warning(
+                        "[gemini] Segment {}/{} completely blocked by safety filters, "
+                        "degrading to source-only. Reason: {}", 
+                        i + 1, len(batch), exc
+                    )
+                    results.append(block)
+                else:
+                    raise
         return results
 
     @staticmethod
