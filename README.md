@@ -4,7 +4,7 @@
 
 ## 功能特色
 - **Pixiv 小說下載**：支援透過網址或小說 ID 進行載入。
-- **高質量的 AI 翻譯**：支援透過 Google Gemini 模型 (gemini-2.5-flash / gemini-3.1 等) 進行翻譯，內建完善的批次處理與分段重試機制，保證長篇小說不漏段。
+- **高品質的 AI 翻譯**：支援透過 Google Gemini 模型 (gemini-2.5-flash / gemini-3.1 等) 進行翻譯，內建完善的批次處理與分段重試機制，保證長篇小說不漏段。
 - **雙語 EPUB 製作**：精美的雙語對照排版（日文原文 / 繁體中文譯文）。
 - **直送 Kindle**：產生 EPUB 後自動透過 SMTP 發送到使用者的 `Send to Kindle` 信箱。
 - **狀態即時回報**：任務處理完成後自動在 Discord 中 Follow-up 回報執行時間與結果。
@@ -175,4 +175,4 @@ INTERNAL_API_TOKEN="自己亂數產生的一個密碼，保護 API 被除了 Wor
   /pixiv2kindle novel:12345678 translate:True target_lang:zh-TW
   ```
 
-祝您閱讀愉快！🚀
+祝您閱讀愉快！
