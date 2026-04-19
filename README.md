@@ -12,7 +12,7 @@
 
 ## 功能特色
 - **Pixiv 小說下載**：支援透過網址或小說 ID 進行載入。
-- **高品質的 AI 翻譯**：支援透過 Google Gemini 模型 (gemini-2.5-flash / gemini-3.1 等) 進行翻譯，內建完善的批次處理與分段重試機制，保證長篇小說不漏段。
+- **高品質的 AI 翻譯**：支援透過 Google Gemini 模型 (gemini-2.5-flash / gemini-3.1 等) 進行翻譯，內建完善的批次處理與分段重試機制，大幅降低長篇小說漏段的機率。
 - **雙語 EPUB 製作**：精美的雙語對照排版（日文原文 / 繁體中文譯文）。
 - **直送 Kindle**：產生 EPUB 後自動透過 SMTP 發送到使用者的 `Send to Kindle` 信箱。
 - **狀態即時回報**：任務處理完成後自動在 Discord 中 Follow-up 回報執行時間與結果。
@@ -31,7 +31,7 @@
 - 專案使用內建的 Python Async / Background Tasks 響應，會立刻回覆 Discord `Accepted`，並在背景花幾分鐘慢慢下載與翻譯，最後再透過 Discord Webhook 傳送完成訊息。
 
 ### 2. 雲端 Serverless 部署（GCP Cloud Run + Cloudflare Workers）
-這是一個不需要維護伺服器、可自動擴展，並且完美解決長任務 Timeout 限制的做法。也透過 Cloud Tasks 避免了 Cloud Run 的 request-based billing 在背景會限縮 CPU 的問題。
+這是一個不需要維護伺服器、可自動擴展，並且能有效解決長任務 Timeout 限制的做法。也透過 Cloud Tasks 避免了 Cloud Run 的 request-based billing 在背景會限縮 CPU 的問題。
 - **架構流程**：Discord `➔` Cloudflare Workers `➔` Cloud Tasks `➔` GCP Cloud Run (FastAPI)
 - **Cloudflare Workers**：負責驗證 Discord Ed25519 數位簽章、辨識使用者 ID，並立即回傳 `Ack`。接著使用 `ctx.waitUntil()` 將任務 Enqueue 至後端。
 - **GCP Cloud Run**：實際執行抓取 Pixiv、Gemini 翻譯以及發送信件等耗時且消耗 CPU 的工作。
@@ -189,4 +189,4 @@ INTERNAL_API_TOKEN="自己亂數產生的一個密碼，保護 API 被除了 Wor
 
 ## 致謝 (Acknowledgments)
 
-本專案的 **Gemini 翻譯核心邏輯** 與 **打批次策略 (Batch Packing)** 大致參考並借鑑了開源的 [shinkansen](https://github.com/jimmysu0309/shinkansen) 專案。特別感謝其關於「雙重門檻分批」及「純文字分隔符協定」等穩定性設計，讓我們徹底解決了 LLM 處理長篇日文小說時的 JSON 解析失敗與漏斷落問題。
+本專案的 **Gemini 翻譯核心邏輯** 與 **打批次策略 (Batch Packing)** 大致參考並借鑑了開源的 [shinkansen](https://github.com/jimmysu0309/shinkansen) 專案。特別感謝其關於「雙重門檻分批」及「純文字分隔符協定」等穩定性設計，讓我們有效改善了 LLM 處理長篇日文小說時的 JSON 解析失敗與漏斷落問題。
