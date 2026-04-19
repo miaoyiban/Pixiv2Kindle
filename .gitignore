@@ -31,6 +31,9 @@ Thumbs.db
 tmp/
 *.epub
 
+# Node (worker_gateway)
+node_modules/
+
 # pytest
 .pytest_cache/
 

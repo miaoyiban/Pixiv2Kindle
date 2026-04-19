@@ -21,7 +21,7 @@ from packages.core.domain.value_objects import (
     EnqueueResponse,
     TaskPayload,
 )
-from packages.core.queue.local_background import LocalBackgroundQueue
+from packages.core.queue.base import TaskQueue
 
 router = APIRouter()
 
@@ -33,7 +33,7 @@ router = APIRouter()
 async def enqueue_pixiv_to_kindle(
     req: EnqueueRequest,
     settings: Settings = Depends(get_settings),
-    queue: LocalBackgroundQueue = Depends(get_task_queue),
+    queue: TaskQueue = Depends(get_task_queue),
     x_internal_token: str = Header(default=""),
 ) -> EnqueueResponse:
     """Accept a task from Cloudflare Workers and enqueue it."""

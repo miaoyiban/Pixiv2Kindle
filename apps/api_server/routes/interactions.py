@@ -30,7 +30,7 @@ from packages.core.domain.value_objects import (
     UserContext,
 )
 from packages.core.exceptions import UnauthorizedUserError
-from packages.core.queue.local_background import LocalBackgroundQueue
+from packages.core.queue.base import TaskQueue
 
 router = APIRouter()
 
@@ -76,7 +76,7 @@ def _extract_option(
 async def discord_interactions(
     request: Request,
     settings: Settings = Depends(get_settings),
-    queue: LocalBackgroundQueue = Depends(get_task_queue),
+    queue: TaskQueue = Depends(get_task_queue),
 ) -> Response:
     """Handle incoming Discord Interactions."""
     # ── Read raw body for signature verification ───────
