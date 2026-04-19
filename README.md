@@ -176,3 +176,9 @@ INTERNAL_API_TOKEN="自己亂數產生的一個密碼，保護 API 被除了 Wor
   ```
 
 祝您閱讀愉快！
+
+---
+
+## 致謝 (Acknowledgments)
+
+本專案的 **Gemini 翻譯核心邏輯** 與 **打批次策略 (Batch Packing)** 大致參考並借鑑了開源的 [shinkansen](https://github.com/jimmysu0309/shinkansen) 專案。特別感謝其關於「雙重門檻分批」及「純文字分隔符協定」等穩定性設計，讓我們徹底解決了 LLM 處理長篇日文小說時的 JSON 解析失敗與漏斷落問題。
