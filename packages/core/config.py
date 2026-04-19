@@ -43,6 +43,8 @@ class Settings(BaseSettings):
     # ── Translation ────────────────────────────────────
     translation_provider: str = "noop"
     gemini_api_key: str = ""
+    gemini_model: str = "gemini-2.5-flash"
+    gemini_max_chars_per_batch: int = 4000
     openai_api_key: str = ""
     fail_on_translation_error: bool = False
 

@@ -94,11 +94,12 @@ class TranslationService:
                 for s, t in zip(source_blocks, translated)
             ]
 
-        except TranslationError:
+        except TranslationError as exc:
             if self._fail_on_error:
                 raise
             logger.warning(
-                "[translation] Translation failed, degrading to source-only"
+                "[translation] Translation failed, degrading to source-only",
+                exc_info=exc
             )
             return [
                 BilingualBlock(source=s, translated=None)

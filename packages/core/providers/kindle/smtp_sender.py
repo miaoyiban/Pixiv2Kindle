@@ -91,7 +91,8 @@ class SmtpKindleSender:
         encoders.encode_base64(part)
         part.add_header(
             "Content-Disposition",
-            f'attachment; filename="{path.name}"',
+            "attachment",
+            filename=path.name,
         )
         msg.attach(part)
         return msg

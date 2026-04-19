@@ -71,7 +71,11 @@ def get_translation_provider() -> TranslationProvider:
 
     if name == "gemini":
         from packages.core.providers.translation.gemini import GeminiTranslationProvider
-        return GeminiTranslationProvider(api_key=settings.gemini_api_key)
+        return GeminiTranslationProvider(
+            api_key=settings.gemini_api_key,
+            model=settings.gemini_model,
+            max_chars_per_batch=settings.gemini_max_chars_per_batch,
+        )
 
     if name == "openai":
         from packages.core.providers.translation.openai import OpenAITranslationProvider
