@@ -363,7 +363,8 @@ class GeminiTranslationProvider:
             text = self._extract_text(data)
         except TranslationError as exc:
             # If the batch was blocked by safety filters and has >1 segments, fallback
-            if len(batch) > 1 and ("blocked" in str(exc).lower() or "safety" in str(exc).lower()):
+            exc_str = str(exc).lower()
+            if len(batch) > 1 and ("blocked" in exc_str or "safety" in exc_str or "prohibited" in exc_str):
                 logger.warning(
                     "[gemini] Batch blocked by safety filter: {}. "
                     "Falling back to per-segment translation to isolate bad segments.",
@@ -418,7 +419,8 @@ class GeminiTranslationProvider:
                 translated = await self._translate_batch([block], target_lang)
                 results.extend(translated)
             except TranslationError as exc:
-                if "blocked" in str(exc).lower() or "safety" in str(exc).lower():
+                exc_str = str(exc).lower()
+                if "blocked" in exc_str or "safety" in exc_str or "prohibited" in exc_str:
                     logger.warning(
                         "[gemini] Segment {}/{} completely blocked by safety filters, "
                         "degrading to source-only. Reason: {}", 
@@ -451,9 +453,9 @@ class GeminiTranslationProvider:
         candidate = candidates[0]
         finish_reason = candidate.get("finishReason", "unknown")
 
-        if finish_reason == "SAFETY":
+        if finish_reason in ("SAFETY", "PROHIBITED_CONTENT"):
             raise TranslationError(
-                "Gemini response blocked by safety filter",
+                f"Gemini response blocked by safety filter (finishReason: {finish_reason})",
                 user_message="翻譯內容被安全過濾器擋下",
             )
 
