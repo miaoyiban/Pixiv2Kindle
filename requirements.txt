@@ -32,3 +32,6 @@ loguru>=0.7.0
 
 # Python 3.9 compat for Pydantic type annotations
 eval_type_backport>=0.2.0
+
+# GCP Cloud Tasks (M2)
+google-cloud-tasks>=2.16.0

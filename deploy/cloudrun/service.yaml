@@ -1,0 +1,50 @@
+# Cloud Run service configuration.
+#
+# Deploy with:
+#   gcloud run deploy pixiv2kindle \
+#     --source=. \
+#     --region=asia-east1 \
+#     --platform=managed \
+#     --allow-unauthenticated=false \
+#     --set-env-vars="$(cat .env | tr '\n' ',')" \
+#     --timeout=900 \
+#     --cpu=1 \
+#     --memory=512Mi \
+#     --max-instances=1 \
+#     --min-instances=0
+#
+# Key settings:
+#   --timeout=900        : 15 min max, matching Discord interaction deadline
+#   --max-instances=1    : Single-user tool, no need for scaling
+#   --min-instances=0    : Save cost when idle
+#   --allow-unauthenticated=false : Cloud Tasks uses OIDC to authenticate
+#
+# Notes:
+#   - Cloud Tasks will invoke /internal/tasks/execute as a normal request
+#   - The request runs with full CPU for its entire duration
+#   - No need for --no-cpu-throttling since the task runs within the request
+
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: pixiv2kindle
+spec:
+  template:
+    metadata:
+      annotations:
+        # Maximum request timeout (seconds).
+        run.googleapis.com/timeout: "900"
+        # Scale to zero when idle.
+        autoscaling.knative.dev/minScale: "0"
+        autoscaling.knative.dev/maxScale: "1"
+    spec:
+      containerConcurrency: 1
+      timeoutSeconds: 900
+      containers:
+        - image: IMAGE_PLACEHOLDER
+          ports:
+            - containerPort: 8080
+          resources:
+            limits:
+              cpu: "1"
+              memory: 512Mi
