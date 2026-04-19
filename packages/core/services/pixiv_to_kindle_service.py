@@ -24,6 +24,7 @@ from packages.core.providers.discord.webhook_client import DiscordWebhookClient
 from packages.core.providers.kindle.smtp_sender import SmtpKindleSender
 from packages.core.services.epub_service import EpubService
 from packages.core.services.pixiv_service import PixivService
+from packages.core.services.translation_service import TranslationService
 from packages.core.utils.file_utils import ensure_file_size
 from packages.core.utils.sanitizer import normalise_text
 from packages.core.utils.text_splitter import split_text_into_blocks
@@ -40,12 +41,14 @@ class PixivToKindleService:
         epub_service: EpubService,
         kindle_sender: SmtpKindleSender,
         discord_notifier: DiscordWebhookClient,
+        translation_service: TranslationService | None = None,
         max_epub_bytes: int = 50_000_000,
     ) -> None:
         self._pixiv = pixiv_service
         self._epub = epub_service
         self._kindle = kindle_sender
         self._discord = discord_notifier
+        self._translation = translation_service
         self._max_epub_bytes = max_epub_bytes
 
     async def execute(self, payload: TaskPayload) -> SendNovelResult:
@@ -79,11 +82,28 @@ class PixivToKindleService:
             source_blocks = split_text_into_blocks(novel.text)
             logger.info("[task:{}] Split into {} blocks", request_id, len(source_blocks))
 
-            # 4. Build bilingual blocks (M1: translate=false only).
-            blocks = [
-                BilingualBlock(source=s, translated=None)
-                for s in source_blocks
-            ]
+            # 4. Translation (if requested).
+            translated = False
+            if (
+                payload.command.translate
+                and self._translation is not None
+            ):
+                blocks = await self._translation.translate(
+                    source_blocks,
+                    target_lang=payload.command.target_lang,
+                    deadline_epoch_ms=deadline_ms,
+                )
+                translated = any(b.translated is not None for b in blocks)
+                logger.info(
+                    "[task:{}] Translation done (blocks_with_translation={})",
+                    request_id,
+                    sum(1 for b in blocks if b.translated is not None),
+                )
+            else:
+                blocks = [
+                    BilingualBlock(source=s, translated=None)
+                    for s in source_blocks
+                ]
 
             # 5. Build EPUB.
             file_path = await self._epub.build(novel, blocks)
@@ -96,7 +116,8 @@ class PixivToKindleService:
 
             # 8. Discord follow-up.
             elapsed = time.monotonic() - start
-            message = f"✅ 已寄送《{novel.title}》到 Kindle（耗時 {elapsed:.1f}s）"
+            mode = "雙語" if translated else "原文"
+            message = f"✅ 已寄送《{novel.title}》（{mode}）到 Kindle（耗時 {elapsed:.1f}s）"
 
             if deadline_ms == 0 or is_within_deadline(deadline_ms):
                 await self._discord.send_followup(
@@ -170,3 +191,4 @@ class PixivToKindleService:
             )
         except DiscordNotifyError:
             logger.exception("Failed to send error follow-up to Discord")
+

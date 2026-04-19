@@ -12,10 +12,12 @@ from packages.core.config import Settings
 from packages.core.providers.discord.webhook_client import DiscordWebhookClient
 from packages.core.providers.kindle.smtp_sender import SmtpKindleSender
 from packages.core.providers.pixiv.pixivpy_client import PixivpyClient
+from packages.core.providers.translation.base import TranslationProvider
 from packages.core.queue.base import TaskQueue
 from packages.core.services.epub_service import EpubService
 from packages.core.services.pixiv_service import PixivService
 from packages.core.services.pixiv_to_kindle_service import PixivToKindleService
+from packages.core.services.translation_service import TranslationService
 
 
 @lru_cache(maxsize=1)
@@ -56,6 +58,40 @@ def get_discord_notifier() -> DiscordWebhookClient:
 
 
 @lru_cache(maxsize=1)
+def get_translation_provider() -> TranslationProvider:
+    """Return the configured translation provider.
+
+    Controlled by ``TRANSLATION_PROVIDER``:
+      - ``noop``   → pass-through (default)
+      - ``gemini`` → Google Gemini API
+      - ``openai`` → OpenAI Chat Completions
+    """
+    settings = get_settings()
+    name = settings.translation_provider.lower()
+
+    if name == "gemini":
+        from packages.core.providers.translation.gemini import GeminiTranslationProvider
+        return GeminiTranslationProvider(api_key=settings.gemini_api_key)
+
+    if name == "openai":
+        from packages.core.providers.translation.openai import OpenAITranslationProvider
+        return OpenAITranslationProvider(api_key=settings.openai_api_key)
+
+    # Default: noop.
+    from packages.core.providers.translation.noop import NoopTranslationProvider
+    return NoopTranslationProvider()
+
+
+@lru_cache(maxsize=1)
+def get_translation_service() -> TranslationService:
+    settings = get_settings()
+    return TranslationService(
+        provider=get_translation_provider(),
+        fail_on_error=settings.fail_on_translation_error,
+    )
+
+
+@lru_cache(maxsize=1)
 def get_pixiv_to_kindle_service() -> PixivToKindleService:
     settings = get_settings()
     return PixivToKindleService(
@@ -63,6 +99,7 @@ def get_pixiv_to_kindle_service() -> PixivToKindleService:
         epub_service=get_epub_service(),
         kindle_sender=get_kindle_sender(),
         discord_notifier=get_discord_notifier(),
+        translation_service=get_translation_service(),
         max_epub_bytes=settings.max_epub_bytes,
     )
 
