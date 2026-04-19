@@ -1,0 +1,12 @@
+[project]
+name = "pixiv2kindle"
+version = "0.1.0"
+description = "Pixiv Novel to Kindle via Discord"
+requires-python = ">=3.9"
+
+[tool.setuptools.packages.find]
+include = ["packages*", "apps*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
