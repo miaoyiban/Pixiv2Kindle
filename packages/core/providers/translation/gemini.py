@@ -94,12 +94,14 @@ class GeminiTranslationProvider:
         max_blocks_per_request: int = 12,
         max_chars_per_batch: int = 4000,
         timeout_seconds: float = 180,
+        max_concurrent_batches: int = 3,
     ) -> None:
         self._api_key = api_key
         self._model = model
         self._max_blocks = max_blocks_per_request
         self._max_chars = max_chars_per_batch
         self._timeout = timeout_seconds
+        self._max_concurrent = max_concurrent_batches
 
     # ── Public API ─────────────────────────────────────
 
@@ -108,28 +110,69 @@ class GeminiTranslationProvider:
         blocks: list[str],
         target_lang: str,
     ) -> list[str]:
-        """Translate *blocks* in batches and return the concatenated results."""
+        """Translate *blocks* in concurrent batches and return results.
+
+        Batches are packed using dual-threshold greedy packing, then
+        executed with bounded concurrency (``max_concurrent_batches``).
+        Results are reassembled in the original block order.
+        """
         if not blocks:
             return []
 
-        results: list[str] = []
         batches = self._pack_batches(blocks)
+        total_batches = len(batches)
 
-        for batch_num, (start, end) in enumerate(batches, 1):
+        logger.info(
+            "[gemini] Translating {} blocks in {} batches "
+            "(concurrency={}, model={})",
+            len(blocks),
+            total_batches,
+            self._max_concurrent,
+            self._model,
+        )
+
+        # Pre-allocate result slots to preserve order.
+        batch_results: list[list[str] | None] = [None] * total_batches
+        semaphore = asyncio.Semaphore(self._max_concurrent)
+
+        async def _worker(idx: int, start: int, end: int) -> None:
             batch = blocks[start:end]
-            logger.info(
-                "[gemini] Translating batch {}/{} ({} blocks, model={})",
-                batch_num,
-                len(batches),
-                len(batch),
-                self._model,
-            )
-            translated = await self._translate_batch(batch, target_lang)
-            results.extend(translated)
+            async with semaphore:
+                logger.info(
+                    "[gemini] Batch {}/{} started ({} blocks)",
+                    idx + 1,
+                    total_batches,
+                    len(batch),
+                )
+                translated = await self._translate_batch(batch, target_lang)
+                batch_results[idx] = translated
+                logger.info(
+                    "[gemini] Batch {}/{} done",
+                    idx + 1,
+                    total_batches,
+                )
+
+        # Launch all workers; the semaphore limits concurrency.
+        tasks = [
+            asyncio.create_task(_worker(i, start, end))
+            for i, (start, end) in enumerate(batches)
+        ]
+        await asyncio.gather(*tasks)
+
+        # Flatten results in order.
+        results: list[str] = []
+        for batch_res in batch_results:
+            if batch_res is None:
+                raise TranslationError(
+                    "A batch returned no results",
+                    user_message="部分翻譯批次未回傳結果",
+                )
+            results.extend(batch_res)
 
         if len(results) != len(blocks):
             raise TranslationError(
-                f"Translation count mismatch: expected {len(blocks)}, got {len(results)}",
+                f"Translation count mismatch: expected {len(blocks)}, "
+                f"got {len(results)}",
                 user_message="翻譯結果數量不一致",
             )
 

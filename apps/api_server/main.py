@@ -14,7 +14,7 @@ from loguru import logger
 from fastapi import FastAPI
 
 from apps.api_server.dependencies import get_settings
-from apps.api_server.routes import enqueue, health, interactions, tasks
+from apps.api_server.routes import enqueue, health, interactions, shortcuts, tasks
 
 # ── Logging ────────────────────────────────────────────
 
@@ -53,6 +53,7 @@ def create_app() -> FastAPI:
     application.include_router(interactions.router)
     application.include_router(enqueue.router)
     application.include_router(tasks.router)
+    application.include_router(shortcuts.router)
 
     @application.on_event("startup")
     async def _startup() -> None:

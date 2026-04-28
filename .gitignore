@@ -41,3 +41,9 @@ node_modules/
 htmlcov/
 .coverage
 .coverage.*
+
+.env.cloudrun
+# Documentation specific to local development
+spec.md
+task.md
+walkthrough*.md

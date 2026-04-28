@@ -6,6 +6,7 @@ Spec references: §12.4, §12.5.
 
 from __future__ import annotations
 
+import asyncio
 import json
 
 import httpx
@@ -44,37 +45,67 @@ class OpenAITranslationProvider:
         model: str = "gpt-4o-mini",
         max_blocks_per_request: int = 30,
         timeout_seconds: float = 120,
+        max_concurrent_batches: int = 3,
     ) -> None:
         self._api_key = api_key
         self._model = model
         self._max_blocks = max_blocks_per_request
         self._timeout = timeout_seconds
+        self._max_concurrent = max_concurrent_batches
 
     async def translate_blocks(
         self,
         blocks: list[str],
         target_lang: str,
     ) -> list[str]:
-        """Translate *blocks* in batches and return the concatenated results."""
+        """Translate *blocks* in concurrent batches and return results."""
         if not blocks:
             return []
 
-        results: list[str] = []
-
+        # Build batch ranges.
+        batch_ranges: list[tuple[int, int]] = []
         for i in range(0, len(blocks), self._max_blocks):
-            batch = blocks[i : i + self._max_blocks]
-            batch_num = i // self._max_blocks + 1
-            total_batches = (len(blocks) - 1) // self._max_blocks + 1
+            batch_ranges.append((i, min(i + self._max_blocks, len(blocks))))
 
-            logger.info(
-                "[openai] Translating batch {}/{} ({} blocks)",
-                batch_num,
-                total_batches,
-                len(batch),
-            )
+        total_batches = len(batch_ranges)
+        logger.info(
+            "[openai] Translating {} blocks in {} batches (concurrency={})",
+            len(blocks),
+            total_batches,
+            self._max_concurrent,
+        )
 
-            translated = await self._translate_batch(batch, target_lang)
-            results.extend(translated)
+        batch_results: list[list[str] | None] = [None] * total_batches
+        semaphore = asyncio.Semaphore(self._max_concurrent)
+
+        async def _worker(idx: int, start: int, end: int) -> None:
+            batch = blocks[start:end]
+            async with semaphore:
+                logger.info(
+                    "[openai] Batch {}/{} started ({} blocks)",
+                    idx + 1, total_batches, len(batch),
+                )
+                translated = await self._translate_batch(batch, target_lang)
+                batch_results[idx] = translated
+                logger.info(
+                    "[openai] Batch {}/{} done",
+                    idx + 1, total_batches,
+                )
+
+        tasks = [
+            asyncio.create_task(_worker(i, start, end))
+            for i, (start, end) in enumerate(batch_ranges)
+        ]
+        await asyncio.gather(*tasks)
+
+        results: list[str] = []
+        for batch_res in batch_results:
+            if batch_res is None:
+                raise TranslationError(
+                    "A batch returned no results",
+                    user_message="部分翻譯批次未回傳結果",
+                )
+            results.extend(batch_res)
 
         if len(results) != len(blocks):
             raise TranslationError(

@@ -117,16 +117,26 @@ class PixivToKindleService:
             # 8. Discord follow-up.
             elapsed = time.monotonic() - start
             mode = "雙語" if translated else "原文"
-            message = f"✅ 已寄送《{novel.title}》（{mode}）到 Kindle（耗時 {elapsed:.1f}s）"
+            block_info = f"，{len(blocks)} 段" if len(blocks) > 20 else ""
+            message = f"✅ 已寄送《{novel.title}》（{mode}{block_info}）到 Kindle（耗時 {elapsed:.1f}s）"
 
             if deadline_ms == 0 or is_within_deadline(deadline_ms):
-                await self._discord.send_followup(
-                    application_id=payload.discord.application_id,
-                    interaction_token=payload.discord.interaction_token,
-                    content=message,
-                )
+                if payload.discord:
+                    await self._discord.send_followup(
+                        application_id=payload.discord.application_id,
+                        interaction_token=payload.discord.interaction_token,
+                        content=message,
+                    )
+                else:
+                    logger.info(
+                        "[task:{}] No Discord context, skipping follow-up",
+                        request_id,
+                    )
             else:
-                logger.warning("[task:{}] Follow-up deadline exceeded, skipping notification", request_id)
+                logger.warning(
+                    "[task:{}] Follow-up deadline exceeded, skipping notification",
+                    request_id,
+                )
 
             result = SendNovelResult(
                 success=True,
@@ -180,6 +190,9 @@ class PixivToKindleService:
         deadline_ms: int,
     ) -> None:
         """Best-effort error notification to Discord."""
+        if payload.discord is None:
+            logger.info("No Discord context, skipping error notification")
+            return
         if deadline_ms > 0 and not is_within_deadline(deadline_ms):
             logger.warning("Cannot send error follow-up: deadline exceeded")
             return

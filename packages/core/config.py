@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     discord_bot_token: str = ""
     allowed_discord_user_id: str = ""
 
+    # ── Shortcuts / Direct API (M5) ───────────────────
+    shortcut_api_key: str = ""
+
     # ── Pixiv ──────────────────────────────────────────
     pixiv_refresh_token: str = ""
 

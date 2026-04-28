@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from loguru import logger
 from pixivpy3 import AppPixivAPI
 
 from packages.core.domain.models import PixivNovel
@@ -31,28 +32,69 @@ class PixivpyClient:
         """Authenticate lazily on first use."""
         if self._authenticated:
             return
+        self._do_auth()
+
+    def _do_auth(self) -> None:
+        """Perform the actual auth call."""
         try:
             self._api.auth(refresh_token=self._refresh_token)
             self._authenticated = True
+            logger.info("[pixiv] Auth succeeded")
         except Exception as exc:
+            self._authenticated = False
             raise PixivAuthError(
                 f"pixivpy3 auth failed: {exc}",
                 user_message="pixiv 認證失效，需更新 refresh token",
             ) from exc
 
+    def _force_reauth(self) -> None:
+        """Reset auth state and re-authenticate.
+
+        Called when an API call fails — the access token may have
+        expired while the Cloud Run instance stayed warm.
+        """
+        logger.info("[pixiv] Forcing re-auth (access token may have expired)")
+        self._authenticated = False
+        self._do_auth()
+
     # ── Public helpers ─────────────────────────────────
 
     def fetch_novel_detail(self, novel_id: int) -> dict[str, Any]:
-        """Return the raw detail dict for *novel_id*."""
+        """Return the raw detail dict for *novel_id*.
+
+        On first failure, re-authenticates and retries once (handles
+        expired access tokens on long-lived Cloud Run instances).
+        """
         self._ensure_auth()
         result = self._api.novel_detail(novel_id)
 
         if "error" in result:
-            msg = result["error"].get("user_message", str(result["error"]))
-            raise PixivFetchError(
-                f"novel_detail error: {msg}",
-                user_message=f"無法取得小說 {novel_id} 的詳細資料",
+            # Log the full raw error for debugging.
+            logger.warning(
+                "[pixiv] novel_detail({}) returned error on first try: {}",
+                novel_id,
+                result["error"],
             )
+            # Retry once after re-auth.
+            self._force_reauth()
+            result = self._api.novel_detail(novel_id)
+
+            if "error" in result:
+                logger.error(
+                    "[pixiv] novel_detail({}) still failed after re-auth: {}",
+                    novel_id,
+                    result["error"],
+                )
+                raw_error = result["error"]
+                msg = (
+                    raw_error.get("user_message")
+                    or raw_error.get("message")
+                    or str(raw_error)
+                )
+                raise PixivFetchError(
+                    f"novel_detail error: {msg}",
+                    user_message=f"無法取得小說 {novel_id} 的詳細資料",
+                )
 
         novel = result.get("novel")
         if novel is None:
@@ -63,16 +105,38 @@ class PixivpyClient:
         return novel
 
     def fetch_novel_text(self, novel_id: int) -> str:
-        """Return the full text body of *novel_id*."""
+        """Return the full text body of *novel_id*.
+
+        On first failure, re-authenticates and retries once.
+        """
         self._ensure_auth()
         result = self._api.novel_text(novel_id)
 
         if "error" in result:
-            msg = result["error"].get("user_message", str(result["error"]))
-            raise PixivFetchError(
-                f"novel_text error: {msg}",
-                user_message=f"無法取得小說 {novel_id} 的內容",
+            logger.warning(
+                "[pixiv] novel_text({}) returned error on first try: {}",
+                novel_id,
+                result["error"],
             )
+            self._force_reauth()
+            result = self._api.novel_text(novel_id)
+
+            if "error" in result:
+                logger.error(
+                    "[pixiv] novel_text({}) still failed after re-auth: {}",
+                    novel_id,
+                    result["error"],
+                )
+                raw_error = result["error"]
+                msg = (
+                    raw_error.get("user_message")
+                    or raw_error.get("message")
+                    or str(raw_error)
+                )
+                raise PixivFetchError(
+                    f"novel_text error: {msg}",
+                    user_message=f"無法取得小說 {novel_id} 的內容",
+                )
 
         text = result.get("novel_text")
         if not text:

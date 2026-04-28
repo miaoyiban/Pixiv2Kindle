@@ -23,6 +23,16 @@ from packages.core.utils.sanitizer import safe_title
 # Resolve the template directory once.
 _TEMPLATE_DIR = str(Path(__file__).resolve().parent.parent / "templates")
 
+# Long novels are automatically split into multiple EPUB chapters
+# for better navigation on Kindle (via TOC).
+_BLOCKS_PER_CHAPTER = 50
+
+# Chinese numeral lookup for chapter titles.
+_CN_NUMERALS = [
+    "", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十",
+    "十一", "十二", "十三", "十四", "十五", "十六", "十七", "十八", "十九", "二十",
+]
+
 
 class EpubService:
     """Build EPUB files from :class:`PixivNovel` and blocks."""
@@ -54,6 +64,34 @@ class EpubService:
 
     # ── Internal ───────────────────────────────────────
 
+    @staticmethod
+    def _split_into_chapters(
+        blocks: list[BilingualBlock],
+        max_per_chapter: int,
+    ) -> list[list[BilingualBlock]]:
+        """Partition *blocks* into chapter-sized groups."""
+        if len(blocks) <= max_per_chapter:
+            return [blocks]
+        chapters: list[list[BilingualBlock]] = []
+        for i in range(0, len(blocks), max_per_chapter):
+            chapters.append(blocks[i : i + max_per_chapter])
+        return chapters
+
+    @staticmethod
+    def _chapter_title(novel_title: str, index: int, total: int) -> str:
+        """Return the display title for a chapter.
+
+        Single-chapter books use the novel title as-is.
+        Multi-chapter books append '— 第N部'.
+        """
+        if total <= 1:
+            return novel_title
+        if index < len(_CN_NUMERALS):
+            label = f"第{_CN_NUMERALS[index]}部"
+        else:
+            label = f"第{index}部"
+        return f"{novel_title} — {label}"
+
     def _build_sync(
         self,
         novel: PixivNovel,
@@ -79,29 +117,44 @@ class EpubService:
         )
         book.add_item(style)
 
-        # ── Chapter ────────────────────────────────────
+        # ── Chapters ──────────────────────────────────
+        chapter_groups = self._split_into_chapters(blocks, _BLOCKS_PER_CHAPTER)
         template = self._jinja.get_template("chapter.xhtml.j2")
-        html = template.render(
-            title=novel.title,
-            author=novel.author_name,
-            language=language,
-            blocks=blocks,
-        )
+        epub_chapters: list[epub.EpubHtml] = []
 
-        chapter = epub.EpubHtml(
-            title=novel.title,
-            file_name="chapter_01.xhtml",
-            lang=language,
-        )
-        chapter.set_content(html.encode("utf-8"))
-        chapter.add_item(style)
-        book.add_item(chapter)
+        for idx, chapter_blocks in enumerate(chapter_groups, 1):
+            ch_title = self._chapter_title(
+                novel.title, idx, len(chapter_groups)
+            )
+            html = template.render(
+                title=ch_title,
+                author=novel.author_name if idx == 1 else None,
+                language=language,
+                blocks=chapter_blocks,
+            )
+
+            chapter = epub.EpubHtml(
+                title=ch_title,
+                file_name=f"chapter_{idx:02d}.xhtml",
+                lang=language,
+            )
+            chapter.set_content(html.encode("utf-8"))
+            chapter.add_item(style)
+            book.add_item(chapter)
+            epub_chapters.append(chapter)
+
+        if len(chapter_groups) > 1:
+            logger.info(
+                "[epub] Long novel split into {} chapters ({} blocks total)",
+                len(chapter_groups),
+                len(blocks),
+            )
 
         # ── Navigation ─────────────────────────────────
-        book.toc = [chapter]
+        book.toc = epub_chapters
         book.add_item(epub.EpubNcx())
         book.add_item(epub.EpubNav())
-        book.spine = ["nav", chapter]
+        book.spine = ["nav"] + epub_chapters
 
         # ── Write ──────────────────────────────────────
         out_dir = ensure_temp_dir(self._temp_dir)

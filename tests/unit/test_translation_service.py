@@ -6,7 +6,7 @@ import time
 import pytest
 
 from packages.core.domain.models import BilingualBlock
-from packages.core.exceptions import TimeBudgetExceededError, TranslationError
+from packages.core.exceptions import TranslationError
 from packages.core.services.translation_service import TranslationService
 
 
@@ -73,12 +73,18 @@ class TestTranslationService:
         assert blocks[0].translated is None
 
     @pytest.mark.asyncio
-    async def test_time_budget_exceeded(self) -> None:
+    async def test_time_budget_exceeded_proceeds_anyway(self) -> None:
+        """Translation no longer rejects on budget exceeded — it proceeds
+        and lets the Kindle delivery happen even if Discord notification
+        will be missed.
+        """
         svc = TranslationService(provider=MockProvider(), fail_on_error=False)
         # Deadline already passed.
         past_deadline = int(time.time() * 1000) - 10_000
-        with pytest.raises(TimeBudgetExceededError):
-            await svc.translate(["test"], "zh-TW", deadline_epoch_ms=past_deadline)
+        # Should NOT raise — translation proceeds regardless.
+        blocks = await svc.translate(["test"], "zh-TW", deadline_epoch_ms=past_deadline)
+        assert len(blocks) == 1
+        assert blocks[0].translated == "tset"
 
     @pytest.mark.asyncio
     async def test_time_budget_sufficient(self) -> None:

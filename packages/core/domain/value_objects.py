@@ -53,8 +53,8 @@ class DeadlineInfo(BaseModel):
 
 class TaskPayload(BaseModel):
     request_id: str
-    discord: DiscordContext
-    user: UserContext
+    discord: DiscordContext | None = None
+    user: UserContext | None = None
     command: CommandPayload
     deadline: DeadlineInfo = Field(default_factory=DeadlineInfo)
 
