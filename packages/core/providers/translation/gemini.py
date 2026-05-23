@@ -29,7 +29,13 @@ from packages.core.exceptions import TranslationError
 # ask the LLM to output the same delimiter between translated segments.
 # This completely eliminates JSON parsing issues.
 _DELIMITER = "\n<<<NOVEL_SEP>>>\n"
-_SEQ_MARKER_RE = re.compile(r"^«\d+»\s*")
+# Tolerant split: Gemini Flash variants sometimes eat the surrounding \n,
+# returning bare `<<<NOVEL_SEP>>>` or spaces around it. Strict split would
+# miss those and trigger an expensive per-segment fallback.
+_SEP_RE = re.compile(r"\s*<<<NOVEL_SEP>>>\s*")
+# Global marker scrub: catches stray «N» that the LLM occasionally drops
+# mid-segment, not just at the start.
+_SEQ_MARKER_GLOBAL_RE = re.compile(r"«\d+»\s*")
 
 # ── System prompt ──────────────────────────────────────
 
@@ -56,9 +62,15 @@ _SYSTEM_PROMPT = """\
 <formatting_rules>
 1. 標點符號：全面使用全形標點符號（，。、！？）。
 2. 中日夾雜排版：在「中文字」與「半形英數字」之間插入一個半形空格。
-3. 段內換行：若輸入段落含有換行符，翻譯時必須在對應位置原樣保留換行符。不可把段落合併成一行。
 </formatting_rules>
 """
+
+# Conditional rule: only appended when at least one block in the batch
+# contains an internal newline. Keeping it out of the base prompt lets
+# batches without newlines share a stable cache prefix with Gemini.
+_LINE_BREAK_RULE = """\
+額外規則（段內換行，極重要）:
+輸入段落中可能含有換行符 \\n（代表原文有對應的斷行或段落分隔）。翻譯時必須在對應位置原樣保留 \\n 字元——譯文的換行數量與位置必須與輸入完全一致。不可把段落合併成一行，也不可擅自增刪換行。"""
 
 _MULTI_SEGMENT_RULE = """\
 額外規則（多段翻譯分隔符與序號，極重要）:
@@ -364,8 +376,12 @@ class GeminiTranslationProvider:
         """Send one batch to the Gemini API using delimiter protocol."""
         url = f"{_GEMINI_API_BASE}/{self._model}:generateContent?key={self._api_key}"
 
-        # Build system prompt
+        # Build system prompt.
+        # Order: stable base → conditional line-break rule → batch-level
+        # multi-segment rule (last because it embeds literal N, hurts cache).
         system_parts = [_SYSTEM_PROMPT.format(target_lang=target_lang)]
+        if any("\n" in t for t in batch):
+            system_parts.append(_LINE_BREAK_RULE)
         if len(batch) > 1:
             system_parts.append(
                 _MULTI_SEGMENT_RULE.format(
@@ -434,9 +450,10 @@ class GeminiTranslationProvider:
             # Single segment: return the whole text
             return [text.strip()]
 
-        # Multi-segment: split by delimiter and strip sequence markers
-        parts = text.split(_DELIMITER)
-        parts = [_SEQ_MARKER_RE.sub("", p).strip() for p in parts]
+        # Multi-segment: tolerant split (handles whitespace drift around the
+        # delimiter), then strip both leading and stray mid-segment markers.
+        parts = _SEP_RE.split(text)
+        parts = [_SEQ_MARKER_GLOBAL_RE.sub("", p).strip() for p in parts]
 
         if len(parts) != len(batch):
             logger.warning(

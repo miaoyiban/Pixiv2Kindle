@@ -15,11 +15,11 @@
   {% for block in blocks %}
   {% if block.translated %}
   <div class="block">
-    <p class="src">{{ block.source | e }}</p>
-    <p class="dst">{{ block.translated | e }}</p>
+    <p class="src">{{ block.source | nl2br }}</p>
+    <p class="dst">{{ block.translated | nl2br }}</p>
   </div>
   {% else %}
-  <p>{{ block.source | e }}</p>
+  <p>{{ block.source | nl2br }}</p>
   {% endif %}
   {% endfor %}
 </body>
