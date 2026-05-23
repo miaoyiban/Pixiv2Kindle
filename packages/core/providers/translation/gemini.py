@@ -421,15 +421,28 @@ class GeminiTranslationProvider:
             data = await self._fetch_with_retry(url, payload)
             text = self._extract_text(data)
         except TranslationError as exc:
-            # If the batch was blocked by safety filters and has >1 segments, fallback
             exc_str = str(exc).lower()
-            if len(batch) > 1 and ("blocked" in exc_str or "safety" in exc_str or "prohibited" in exc_str):
+            is_safety_block = (
+                "blocked" in exc_str
+                or "safety" in exc_str
+                or "prohibited" in exc_str
+            )
+            if is_safety_block:
+                if len(batch) > 1:
+                    logger.warning(
+                        "[gemini] Batch blocked by safety filter: {}. "
+                        "Falling back to per-segment translation to isolate bad segments.",
+                        exc,
+                    )
+                    return await self._per_segment_fallback(batch, target_lang)
+                # Single-segment batch: degrade just this block to source so the
+                # rest of the novel still gets translated.
                 logger.warning(
-                    "[gemini] Batch blocked by safety filter: {}. "
-                    "Falling back to per-segment translation to isolate bad segments.",
-                    exc
+                    "[gemini] Single-segment batch blocked by safety filter: {}. "
+                    "Degrading this block to source-only.",
+                    exc,
                 )
-                return await self._per_segment_fallback(batch, target_lang)
+                return [batch[0]]
             raise
 
         # ── Validate response ──────────────────────────
