@@ -24,6 +24,7 @@ def split_text_into_blocks(
     text: str,
     *,
     max_block_chars: int = DEFAULT_MAX_BLOCK_CHARS,
+    per_line: bool = False,
 ) -> list[str]:
     """Return a list of text blocks ready for display or translation.
 
@@ -33,6 +34,11 @@ def split_text_into_blocks(
         Raw novel text (may contain ``\\n``, ``\\r\\n``, etc.).
     max_block_chars:
         Soft maximum characters per block.
+    per_line:
+        When True, split on any newline (``\\n+``) so each line becomes
+        its own block. Use this for authors who only insert single
+        line breaks (no blank lines) and want each line translated
+        individually. Defaults to paragraph-mode (``\\n{2,}``).
 
     Returns
     -------
@@ -42,8 +48,9 @@ def split_text_into_blocks(
     # Normalise line endings.
     text = text.replace("\r\n", "\n").replace("\r", "\n")
 
-    # Step 1 – paragraph split on double newline.
-    raw_paragraphs = re.split(r"\n{2,}", text)
+    # Step 1 – split into paragraphs (or lines, if per_line is set).
+    split_pattern = r"\n+" if per_line else r"\n{2,}"
+    raw_paragraphs = re.split(split_pattern, text)
 
     blocks: list[str] = []
     for para in raw_paragraphs:

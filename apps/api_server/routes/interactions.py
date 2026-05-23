@@ -120,6 +120,7 @@ async def discord_interactions(
         novel_input = _extract_option(options, "novel", default="")
         translate = _extract_option(options, "translate", default=False)
         target_lang = _extract_option(options, "target_lang", default="zh-TW")
+        per_line = _extract_option(options, "per_line", default=False)
 
         if not novel_input:
             return JSONResponse(
@@ -147,6 +148,7 @@ async def discord_interactions(
                 novel_input=str(novel_input),
                 translate=bool(translate),
                 target_lang=str(target_lang),
+                per_line=bool(per_line),
             ),
             deadline=DeadlineInfo(followup_deadline_epoch_ms=soft_deadline_ms),
         )

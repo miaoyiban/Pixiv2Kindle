@@ -43,6 +43,12 @@ const commands = [
 				type: 3, // STRING
 				required: false,
 			},
+			{
+				name: "per_line",
+				description: "逐行翻譯模式（每個換行當一段，適合只用單一 \\n 斷行的作者）",
+				type: 5, // BOOLEAN
+				required: false,
+			},
 		],
 	},
 ];

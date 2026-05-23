@@ -153,6 +153,7 @@ export default {
 				"target_lang",
 				"zh-TW",
 			);
+			const perLine = getOption<boolean>(options, "per_line", false);
 
 			if (!novelInput) {
 				return ephemeralMessage("❌ 請提供 pixiv 小說 URL 或 ID");
@@ -175,6 +176,7 @@ export default {
 					novel_input: String(novelInput),
 					translate: Boolean(translate),
 					target_lang: String(targetLang),
+					per_line: Boolean(perLine),
 				},
 			};
 

@@ -34,6 +34,7 @@ class ShortcutRequest(BaseModel):
     novel_input: str
     translate: bool = False
     target_lang: str = "zh-TW"
+    per_line: bool = False
 
 
 @router.post(
@@ -69,6 +70,7 @@ async def shortcut_pixiv_to_kindle(
             novel_input=req.novel_input,
             translate=req.translate,
             target_lang=req.target_lang,
+            per_line=req.per_line,
         ),
         deadline=DeadlineInfo(followup_deadline_epoch_ms=0),  # no Discord deadline
     )

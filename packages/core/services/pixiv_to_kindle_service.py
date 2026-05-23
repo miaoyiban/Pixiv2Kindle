@@ -79,8 +79,16 @@ class PixivToKindleService:
             from dataclasses import replace
             novel = replace(novel, text=clean_text)
 
-            source_blocks = split_text_into_blocks(novel.text)
-            logger.info("[task:{}] Split into {} blocks", request_id, len(source_blocks))
+            source_blocks = split_text_into_blocks(
+                novel.text,
+                per_line=payload.command.per_line,
+            )
+            logger.info(
+                "[task:{}] Split into {} blocks (per_line={})",
+                request_id,
+                len(source_blocks),
+                payload.command.per_line,
+            )
 
             # 4. Translation (if requested).
             translated = False

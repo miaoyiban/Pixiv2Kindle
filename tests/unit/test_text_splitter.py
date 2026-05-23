@@ -40,3 +40,17 @@ class TestSplitTextIntoBlocks:
         text = "  前面有空白  \n\n  後面也有  "
         result = split_text_into_blocks(text)
         assert result == ["前面有空白", "後面也有"]
+
+    def test_per_line_splits_single_newlines(self) -> None:
+        text = "第一行\n第二行\n第三行"
+        # Default: kept as one block (no \n\n)
+        assert split_text_into_blocks(text) == ["第一行\n第二行\n第三行"]
+        # per_line: each line becomes its own block
+        assert split_text_into_blocks(text, per_line=True) == [
+            "第一行", "第二行", "第三行",
+        ]
+
+    def test_per_line_collapses_consecutive_newlines(self) -> None:
+        # Mixed \n and \n\n should all be treated as separators in per_line mode.
+        text = "甲\n\n乙\n丙"
+        assert split_text_into_blocks(text, per_line=True) == ["甲", "乙", "丙"]

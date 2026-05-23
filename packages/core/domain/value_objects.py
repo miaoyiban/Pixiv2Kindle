@@ -27,6 +27,7 @@ class CommandPayload(BaseModel):
     novel_input: str
     translate: bool = False
     target_lang: str = "zh-TW"
+    per_line: bool = False
 
 
 # ── Enqueue request / response ─────────────────────────
