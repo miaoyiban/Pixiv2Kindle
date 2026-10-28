@@ -1,0 +1,9 @@
+# 從 .gitignore 繼承規則，並額外排除不該上傳到 Cloud Run 的本機檔案
+#!include:.gitignore
+.git/
+.gitignore
+.gcloudignore
+.claude/
+docs/
+tests/
+apps/worker_gateway/
