@@ -9,10 +9,12 @@ Spec references: §12.1 – §12.7.
 from __future__ import annotations
 
 import math
+from dataclasses import replace
 
 from loguru import logger
 
 from packages.core.domain.models import BilingualBlock
+from packages.core.utils.pixiv_layout import strip_ruby
 from packages.core.exceptions import TranslationError
 from packages.core.providers.translation.base import TranslationProvider
 from packages.core.utils.time_budget import remaining_seconds
@@ -126,6 +128,31 @@ class TranslationService:
                 BilingualBlock(source=s, translated=None)
                 for s in source_blocks
             ]
+
+    async def translate_layout(
+        self,
+        layout: list[BilingualBlock],
+        target_lang: str,
+        deadline_epoch_ms: int = 0,
+    ) -> list[BilingualBlock]:
+        """Translate the text/chapter items of *layout*, keeping its structure.
+
+        Gaps and page breaks are never sent to the model, and ruby readings
+        are stripped from what is sent (the source keeps them for display).
+        """
+        idx = [i for i, b in enumerate(layout) if b.kind in ("text", "chapter")]
+        if not idx:
+            return list(layout)
+
+        translated = await self.translate(
+            [strip_ruby(layout[i].source) for i in idx],
+            target_lang=target_lang,
+            deadline_epoch_ms=deadline_epoch_ms,
+        )
+        out = list(layout)
+        for i, tb in zip(idx, translated):
+            out[i] = replace(layout[i], translated=tb.translated)
+        return out
 
     def _log_time_estimate(
         self,

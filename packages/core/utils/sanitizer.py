@@ -43,14 +43,14 @@ def normalise_text(text: str) -> str:
     - Normalise Unicode to NFKC
     - Unify line endings to ``\\n``
     - Strip trailing whitespace per line
-    - Collapse 3+ consecutive blank lines into 2
+
+    Blank-line runs are kept on purpose: authors use them for pacing,
+    and :func:`packages.core.utils.pixiv_layout.parse_layout` turns them
+    into (capped) gaps.
     """
     text = unicodedata.normalize("NFKC", text)
     text = text.replace("\r\n", "\n").replace("\r", "\n")
 
     lines = [line.rstrip() for line in text.split("\n")]
     text = "\n".join(lines)
-
-    # Collapse excessive blank lines.
-    text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()

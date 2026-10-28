@@ -26,10 +26,20 @@ class PixivNovel:
 
 @dataclass(frozen=True)
 class BilingualBlock:
-    """One paragraph of source text with an optional translation."""
+    """One item of the novel layout, with an optional translation.
+
+    ``kind`` is one of:
+      - ``"text"``    – a paragraph/line (may contain pixiv ruby markup)
+      - ``"chapter"`` – a ``[chapter:]`` heading; ``source`` is the title
+      - ``"gap"``     – author's blank lines; ``gap_lines`` says how many
+      - ``"page"``    – a ``[newpage]`` page break
+    Only ``text`` and ``chapter`` are translated.
+    """
 
     source: str
     translated: str | None = None
+    kind: str = "text"
+    gap_lines: int = 0
 
 
 @dataclass(frozen=True)

@@ -7,13 +7,23 @@
   <link rel="stylesheet" type="text/css" href="styles.css" />
 </head>
 <body>
+  {% if first_page %}
   <h1>{{ title }}</h1>
   {% if author %}
   <p class="author">{{ author }}</p>
   {% endif %}
+  {% endif %}
 
   {% for block in blocks %}
-  {% if block.translated %}
+  {% if block.kind == "gap" %}
+  {# nbsp keeps the div from being serialised as <div/>, which some Kindle converters mis-parse #}
+  <div class="gap gap-{{ block.gap_lines }}">&#160;</div>
+  {% elif block.kind == "chapter" %}
+  <h2 class="chapter">
+    {{ block.source | nl2br }}
+    {% if block.translated %}<span class="dst">{{ block.translated | nl2br }}</span>{% endif %}
+  </h2>
+  {% elif block.translated %}
   <div class="block">
     <p class="src">{{ block.source | nl2br }}</p>
     <p class="dst">{{ block.translated | nl2br }}</p>

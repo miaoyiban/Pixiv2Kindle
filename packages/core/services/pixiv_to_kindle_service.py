@@ -11,10 +11,11 @@ from __future__ import annotations
 
 import os
 import time
+from collections import Counter
 
 from loguru import logger
 
-from packages.core.domain.models import BilingualBlock, SendNovelResult
+from packages.core.domain.models import SendNovelResult
 from packages.core.domain.value_objects import TaskPayload
 from packages.core.exceptions import (
     DiscordNotifyError,
@@ -27,7 +28,7 @@ from packages.core.services.pixiv_service import PixivService
 from packages.core.services.translation_service import TranslationService
 from packages.core.utils.file_utils import ensure_file_size
 from packages.core.utils.sanitizer import normalise_text
-from packages.core.utils.text_splitter import split_text_into_blocks
+from packages.core.utils.pixiv_layout import parse_layout
 from packages.core.utils.time_budget import ensure_time_budget, is_within_deadline
 
 
@@ -79,15 +80,16 @@ class PixivToKindleService:
             from dataclasses import replace
             novel = replace(novel, text=clean_text)
 
-            source_blocks = split_text_into_blocks(
-                novel.text,
-                per_line=payload.command.per_line,
-            )
+            layout = parse_layout(novel.text, per_line=payload.command.per_line)
+            kinds = Counter(b.kind for b in layout)
             logger.info(
-                "[task:{}] Split into {} blocks (per_line={})",
+                "[task:{}] Split into {} blocks (per_line={}, gaps={}, pages={}, chapters={})",
                 request_id,
-                len(source_blocks),
+                kinds["text"],
                 payload.command.per_line,
+                kinds["gap"],
+                kinds["page"],
+                kinds["chapter"],
             )
 
             # 4. Translation (if requested).
@@ -96,8 +98,8 @@ class PixivToKindleService:
                 payload.command.translate
                 and self._translation is not None
             ):
-                blocks = await self._translation.translate(
-                    source_blocks,
+                blocks = await self._translation.translate_layout(
+                    layout,
                     target_lang=payload.command.target_lang,
                     deadline_epoch_ms=deadline_ms,
                 )
@@ -108,10 +110,7 @@ class PixivToKindleService:
                     sum(1 for b in blocks if b.translated is not None),
                 )
             else:
-                blocks = [
-                    BilingualBlock(source=s, translated=None)
-                    for s in source_blocks
-                ]
+                blocks = layout
 
             # 5. Build EPUB.
             file_path = await self._epub.build(novel, blocks)
@@ -125,7 +124,8 @@ class PixivToKindleService:
             # 8. Discord follow-up.
             elapsed = time.monotonic() - start
             mode = "雙語" if translated else "原文"
-            block_info = f"，{len(blocks)} 段" if len(blocks) > 20 else ""
+            text_count = sum(1 for b in blocks if b.kind == "text")
+            block_info = f"，{text_count} 段" if text_count > 20 else ""
             message = f"✅ 已寄送《{novel.title}》（{mode}{block_info}）到 Kindle（耗時 {elapsed:.1f}s）"
 
             if deadline_ms == 0 or is_within_deadline(deadline_ms):

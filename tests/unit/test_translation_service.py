@@ -100,3 +100,47 @@ class TestTranslationService:
         svc = TranslationService(provider=MockProvider(), fail_on_error=False)
         blocks = await svc.translate(["test"], "zh-TW", deadline_epoch_ms=0)
         assert len(blocks) == 1
+
+
+# ── translate_layout ───────────────────────────────────
+
+
+class RecordingProvider:
+    def __init__(self) -> None:
+        self.seen: list[str] = []
+
+    async def translate_blocks(self, blocks: list[str], target_lang: str) -> list[str]:
+        self.seen = list(blocks)
+        return [f"<{b}>" for b in blocks]
+
+
+@pytest.mark.asyncio
+async def test_translate_layout_only_sends_text_and_chapters_without_ruby() -> None:
+    provider = RecordingProvider()
+    svc = TranslationService(provider=provider)
+    layout = [
+        BilingualBlock("第一章", kind="chapter"),
+        BilingualBlock("[[rb:漢字 > かんじ]]だ"),
+        BilingualBlock("", kind="gap", gap_lines=2),
+        BilingualBlock("", kind="page"),
+        BilingualBlock("乙"),
+    ]
+
+    out = await svc.translate_layout(layout, "zh-TW")
+
+    assert provider.seen == ["第一章", "漢字だ", "乙"]
+    assert out == [
+        BilingualBlock("第一章", translated="<第一章>", kind="chapter"),
+        BilingualBlock("[[rb:漢字 > かんじ]]だ", translated="<漢字だ>"),
+        BilingualBlock("", kind="gap", gap_lines=2),
+        BilingualBlock("", kind="page"),
+        BilingualBlock("乙", translated="<乙>"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_translate_layout_degrades_keeping_structure() -> None:
+    svc = TranslationService(provider=FailingProvider(), fail_on_error=False)
+    layout = [BilingualBlock("甲"), BilingualBlock("", kind="page"), BilingualBlock("乙")]
+    out = await svc.translate_layout(layout, "zh-TW")
+    assert out == layout

@@ -31,8 +31,8 @@ class TestNormaliseText:
     def test_crlf(self) -> None:
         assert normalise_text("a\r\nb") == "a\nb"
 
-    def test_collapses_blank_lines(self) -> None:
-        assert normalise_text("a\n\n\n\n\nb") == "a\n\nb"
+    def test_keeps_blank_lines_for_author_pacing(self) -> None:
+        assert normalise_text("a\n\n\n\n\nb") == "a\n\n\n\n\nb"
 
     def test_strips_trailing_ws(self) -> None:
         assert normalise_text("hello   \nworld  ") == "hello\nworld"
