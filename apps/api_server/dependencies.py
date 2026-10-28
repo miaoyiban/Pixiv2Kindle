@@ -18,12 +18,19 @@ from packages.core.services.epub_service import EpubService
 from packages.core.services.pixiv_service import PixivService
 from packages.core.services.pixiv_to_kindle_service import PixivToKindleService
 from packages.core.services.translation_service import TranslationService
+from packages.core.utils.task_dedupe import TaskDeduper
 
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     """Singleton settings instance."""
     return Settings()
+
+
+@lru_cache(maxsize=1)
+def get_task_deduper() -> TaskDeduper:
+    """Process-wide record of task IDs already accepted by this instance."""
+    return TaskDeduper()
 
 
 @lru_cache(maxsize=1)
@@ -130,6 +137,7 @@ def get_task_queue() -> TaskQueue:
             queue_name=settings.cloud_tasks_queue_name,
             task_handler_url=settings.cloud_tasks_task_handler_url,
             internal_api_token=settings.internal_api_token,
+            dispatch_deadline_seconds=settings.cloud_tasks_dispatch_deadline_seconds,
         )
 
     # Default: local background queue.

@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 
 from google.cloud import tasks_v2
-from google.protobuf import timestamp_pb2
+from google.protobuf import duration_pb2, timestamp_pb2
 from loguru import logger
 
 from packages.core.domain.value_objects import TaskPayload
@@ -29,11 +29,13 @@ class CloudTasksQueue:
         queue_name: str,
         task_handler_url: str,
         internal_api_token: str,
+        dispatch_deadline_seconds: int = 1800,
     ) -> None:
         self._client = tasks_v2.CloudTasksClient()
         self._parent = self._client.queue_path(project_id, location, queue_name)
         self._handler_url = task_handler_url
         self._internal_token = internal_api_token
+        self._dispatch_deadline = dispatch_deadline_seconds
 
     async def enqueue_send_novel(self, payload: TaskPayload) -> None:
         """Create an HTTP task in Cloud Tasks.
@@ -53,6 +55,7 @@ class CloudTasksQueue:
                 },
                 body=body,
             ),
+            dispatch_deadline=duration_pb2.Duration(seconds=self._dispatch_deadline),
         )
 
         # Cloud Tasks client is synchronous – but calling it is fast

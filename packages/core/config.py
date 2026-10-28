@@ -69,6 +69,10 @@ class Settings(BaseSettings):
     cloud_tasks_location: str = ""
     cloud_tasks_queue_name: str = ""
     cloud_tasks_task_handler_url: str = ""
+    # How long Cloud Tasks waits for the handler before re-dispatching.
+    # 1800s is the Cloud Tasks maximum for HTTP targets (default is 600s,
+    # which made long novels get translated twice).
+    cloud_tasks_dispatch_deadline_seconds: int = 1800
 
     # ── Deadline ───────────────────────────────────────
     followup_soft_deadline_seconds: int = 720   # 12 min
