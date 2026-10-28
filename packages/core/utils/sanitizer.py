@@ -40,7 +40,8 @@ def safe_title(title: str, *, max_len: int = MAX_SAFE_TITLE_LEN) -> str:
 def normalise_text(text: str) -> str:
     """Light normalisation of raw novel text.
 
-    - Normalise Unicode to NFKC
+    - Normalise Unicode to NFC (not NFKC: NFKC rewrites Japanese
+      typography — …… → ..., ？ → ?, 　 → space, ～ → ~, （１） → (1))
     - Unify line endings to ``\\n``
     - Strip trailing whitespace per line
 
@@ -48,7 +49,7 @@ def normalise_text(text: str) -> str:
     and :func:`packages.core.utils.pixiv_layout.parse_layout` turns them
     into (capped) gaps.
     """
-    text = unicodedata.normalize("NFKC", text)
+    text = unicodedata.normalize("NFC", text)
     text = text.replace("\r\n", "\n").replace("\r", "\n")
 
     lines = [line.rstrip() for line in text.split("\n")]

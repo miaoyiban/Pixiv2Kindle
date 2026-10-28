@@ -31,6 +31,15 @@ class TestNormaliseText:
     def test_crlf(self) -> None:
         assert normalise_text("a\r\nb") == "a\nb"
 
+    def test_keeps_japanese_punctuation_and_fullwidth_chars(self) -> None:
+        # NFKC used to turn …… into ......, ？ into ?, 　 into a space, etc.
+        text = "「……まだ？」\n　彼女は――ふっと笑った！（１２時）～♡"
+        assert normalise_text(text) == text
+
+    def test_composes_split_dakuten(self) -> None:
+        # NFC still joins decomposed kana (か + ゛ combining) into が.
+        assert normalise_text("が") == "が"
+
     def test_keeps_blank_lines_for_author_pacing(self) -> None:
         assert normalise_text("a\n\n\n\n\nb") == "a\n\n\n\n\nb"
 
