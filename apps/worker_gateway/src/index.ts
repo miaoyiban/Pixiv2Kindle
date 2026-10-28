@@ -10,6 +10,8 @@
  * Does NOT: fetch pixiv, translate, build EPUB, send Kindle.
  */
 
+import { enqueueWithRetry, notifyDiscordFailure } from "./enqueue";
+
 export interface Env {
 	DISCORD_PUBLIC_KEY: string;
 	DISCORD_APPLICATION_ID: string;
@@ -184,33 +186,37 @@ export default {
 				`[interaction] request_id=${requestId} novel=${novelInput} user=${userId}`,
 			);
 
-			// 4. Fire-and-forget backend enqueue via waitUntil.
+			// 4. Backend enqueue via waitUntil, retrying cold-start failures.
 			const backendUrl = `${env.BACKEND_BASE_URL}/internal/enqueue/pixiv-to-kindle`;
 
 			ctx.waitUntil(
-				fetch(backendUrl, {
-					method: "POST",
-					headers: {
-						"Content-Type": "application/json",
-						"X-Internal-Token": env.INTERNAL_API_TOKEN,
-					},
-					body: JSON.stringify(payload),
-				})
-					.then(async (resp) => {
-						if (!resp.ok) {
-							const text = await resp.text();
-							console.error(
-								`Backend enqueue failed: ${resp.status} – ${text}`,
-							);
-						} else {
-							console.log(
-								`Backend enqueue accepted for ${requestId}`,
-							);
-						}
-					})
-					.catch((err) => {
-						console.error(`Backend enqueue error: ${err}`);
-					}),
+				(async () => {
+					const result = await enqueueWithRetry(backendUrl, {
+						method: "POST",
+						headers: {
+							"Content-Type": "application/json",
+							"X-Internal-Token": env.INTERNAL_API_TOKEN,
+						},
+						body: JSON.stringify(payload),
+					});
+
+					if (result.ok) {
+						console.log(
+							`Backend enqueue accepted for ${requestId} (attempts=${result.attempts})`,
+						);
+						return;
+					}
+
+					console.error(
+						`Backend enqueue failed for ${requestId} after ${result.attempts} attempts: ` +
+							`${result.status ?? "network"} – ${result.detail.slice(0, 300)}`,
+					);
+					await notifyDiscordFailure(
+						env.DISCORD_APPLICATION_ID,
+						interaction.token,
+						"❌ 伺服器暫時無法處理（已自動重試仍失敗），請稍後再送一次",
+					);
+				})(),
 			);
 
 			// 5. Return deferred ack immediately.

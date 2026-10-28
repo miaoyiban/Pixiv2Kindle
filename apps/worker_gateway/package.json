@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "register-commands": "node scripts/register-commands.mjs"
+    "register-commands": "node scripts/register-commands.mjs",
+    "test": "node --test \"test/*.test.ts\""
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20240512.0",
