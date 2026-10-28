@@ -29,6 +29,11 @@ _ESTIMATED_SECONDS_PER_BATCH = 70.0
 _BLOCKS_PER_BATCH = 12
 
 
+def has_words(text: str) -> bool:
+    """True if *text* has any letter (kana, kanji, latin…), not just symbols."""
+    return any(ch.isalpha() for ch in text)
+
+
 class TranslationService:
     """Translate source blocks using the configured provider.
 
@@ -77,7 +82,24 @@ class TranslationService:
         TranslationError
             If ``fail_on_error=True`` and translation fails.
         """
-        n = len(source_blocks)
+        # Lines with no letters at all (……, ⚪︎⚫︎, ♡♡, ！？) have nothing to
+        # translate; sent alone, the model invents a story or asks for input.
+        send_idx = [i for i, s in enumerate(source_blocks) if has_words(s)]
+        to_send = [source_blocks[i] for i in send_idx]
+        n = len(to_send)
+        skipped = len(source_blocks) - n
+        if skipped:
+            logger.info("[translation] Skipping {} symbol-only blocks", skipped)
+
+        def merge(translations: list[str | None]) -> list[BilingualBlock]:
+            out = [BilingualBlock(source=s) for s in source_blocks]
+            for i, t in zip(send_idx, translations):
+                # Providers return "" when they had to discard a bad output.
+                out[i] = BilingualBlock(source=source_blocks[i], translated=t or None)
+            return out
+
+        if not to_send:
+            return merge([])
 
         # ── 1. Time budget estimation (warning only) ──
         if deadline_epoch_ms > 0:
@@ -85,9 +107,7 @@ class TranslationService:
 
         # ── 2. Translate ──────────────────────────────
         try:
-            translated = await self._provider.translate_blocks(
-                source_blocks, target_lang
-            )
+            translated = await self._provider.translate_blocks(to_send, target_lang)
 
             logger.info(
                 "[translation] Successfully translated {} blocks to {}",
@@ -95,10 +115,7 @@ class TranslationService:
                 target_lang,
             )
 
-            return [
-                BilingualBlock(source=s, translated=t)
-                for s, t in zip(source_blocks, translated)
-            ]
+            return merge(translated)
 
         except TranslationError as exc:
             if self._fail_on_error:

@@ -258,3 +258,94 @@ async def test_concurrent_token_calls_refresh_once():
     assert default_calls["n"] == 1          # creds loaded once
     assert creds.refresh_calls == 1         # refreshed once despite 10 callers
     assert all(t == "tok-1" for t in tokens)
+
+
+# ── runaway output / hallucination guards ─────────────
+
+from packages.core.providers.translation import gemini as _g
+
+
+def _resp(text: str, finish: str = "STOP") -> dict:
+    return {
+        "candidates": [{"content": {"parts": [{"text": text}]}, "finishReason": finish}],
+        "usageMetadata": {},
+    }
+
+
+def _provider_with(responses):
+    p = GeminiTranslationProvider(api_key="k", model="m")
+    sent = []
+
+    async def fake_fetch(url, payload, headers):
+        sent.append(payload)
+        return responses.pop(0)
+
+    p._fetch_with_retry = fake_fetch  # type: ignore[assignment]
+    return p, sent
+
+
+def test_system_prompt_has_no_concrete_character_names():
+    # Example names in the prompt became the "protagonist" of invented stories.
+    assert "和泉" not in _g._SYSTEM_PROMPT
+    assert "佐藤" not in _g._SYSTEM_PROMPT
+
+
+@pytest.mark.asyncio
+async def test_output_token_budget_scales_with_input():
+    p, sent = _provider_with([_resp("啊"), _resp("x" * 10)])
+    await p.translate_blocks(["あ"], "zh-TW")
+    small = sent[0]["generationConfig"]["maxOutputTokens"]
+    p2, sent2 = _provider_with([_resp("x")])
+    await p2.translate_blocks(["あ" * 3000], "zh-TW")
+    big = sent2[0]["generationConfig"]["maxOutputTokens"]
+    assert small <= 512
+    assert big > 3000
+
+
+def test_collapse_repeats_caps_runaway_runs():
+    out = _g._collapse_repeats("「" + "啊" * 5000 + "！」", "「ああああっ！」")
+    assert len(out) < 40
+    assert out.startswith("「啊") and out.endswith("！」")
+
+
+def test_collapse_repeats_keeps_normal_text():
+    s = "「啊啊啊啊啊啊啊啊啊啊！」"
+    assert _g._collapse_repeats(s, "「あああああああああっ！」") == s
+
+
+@pytest.mark.asyncio
+async def test_single_segment_runaway_is_collapsed():
+    p, _ = _provider_with([_resp("啊" * 20000, finish="MAX_TOKENS")])
+    out = await p.translate_blocks(["ああああっ"], "zh-TW")
+    assert 0 < len(out[0]) < 30
+
+
+@pytest.mark.asyncio
+async def test_single_segment_invented_story_is_dropped():
+    story = "「喂，你這傢伙。」\n\n「幹嘛啦。」\n\n「你是不是對他有意思？」" * 10
+    p, _ = _provider_with([_resp(story)])
+    out = await p.translate_blocks(["うん"], "zh-TW")
+    assert out == [""]  # no translation rather than a made-up one
+
+
+@pytest.mark.asyncio
+async def test_batch_segment_invented_story_is_retried_alone():
+    story = "完全無關的長篇故事內容。" * 30
+    batch_reply = "«1» 甲譯<<<NOVEL_SEP>>>«2» " + story + "<<<NOVEL_SEP>>>«3» 丙譯"
+    p, sent = _provider_with([_resp(batch_reply), _resp("乙譯")])
+    out = await p.translate_blocks(["甲", "乙", "丙"], "zh-TW")
+    assert out == ["甲譯", "乙譯", "丙譯"]
+    assert len(sent) == 2  # one batch call + one retry, not 3 singles
+
+
+@pytest.mark.asyncio
+async def test_batch_hitting_max_tokens_falls_back():
+    p, sent = _provider_with(
+        [
+            _resp("«1» 甲譯<<<NOVEL_SEP>>>«2» 乙" + "啊" * 50, finish="MAX_TOKENS"),
+            _resp("甲譯"),
+            _resp("乙譯"),
+        ]
+    )
+    out = await p.translate_blocks(["甲", "乙"], "zh-TW")
+    assert out == ["甲譯", "乙譯"]

@@ -144,3 +144,42 @@ async def test_translate_layout_degrades_keeping_structure() -> None:
     layout = [BilingualBlock("甲"), BilingualBlock("", kind="page"), BilingualBlock("乙")]
     out = await svc.translate_layout(layout, "zh-TW")
     assert out == layout
+
+
+# ── punctuation / symbol-only lines are never sent ─────
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("line", ["……", "⚪︎⚫︎⚪︎⚫︎", "◇◇◇", "♡♡", "！？", "――", "* * *", "「……」"])
+async def test_symbol_only_lines_are_not_sent(line: str) -> None:
+    provider = RecordingProvider()
+    svc = TranslationService(provider=provider)
+    out = await svc.translate(["甲", line, "乙"], "zh-TW")
+    assert provider.seen == ["甲", "乙"]
+    assert out[1] == BilingualBlock(source=line, translated=None)
+    assert out[0].translated == "<甲>" and out[2].translated == "<乙>"
+
+
+@pytest.mark.asyncio
+async def test_all_symbol_lines_skip_provider_entirely() -> None:
+    provider = FailingProvider()  # would raise if called
+    svc = TranslationService(provider=provider, fail_on_error=True)
+    out = await svc.translate(["……", "♡"], "zh-TW")
+    assert [b.translated for b in out] == [None, None]
+
+
+@pytest.mark.asyncio
+async def test_onomatopoeia_is_still_translated() -> None:
+    provider = RecordingProvider()
+    await TranslationService(provider=provider).translate(["ああぁっ♡"], "zh-TW")
+    assert provider.seen == ["ああぁっ♡"]
+
+
+@pytest.mark.asyncio
+async def test_empty_translation_means_no_translation() -> None:
+    class EmptyProvider:
+        async def translate_blocks(self, blocks, target_lang):
+            return [""]
+
+    out = await TranslationService(provider=EmptyProvider()).translate(["甲"], "zh-TW")
+    assert out[0].translated is None
