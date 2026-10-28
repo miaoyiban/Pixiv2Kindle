@@ -75,6 +75,9 @@ def get_translation_provider() -> TranslationProvider:
             api_key=settings.gemini_api_key,
             model=settings.gemini_model,
             max_chars_per_batch=settings.gemini_max_chars_per_batch,
+            backend=settings.gemini_backend,
+            vertex_project_id=settings.vertex_project_id,
+            vertex_location=settings.vertex_location,
         )
 
     if name == "openai":

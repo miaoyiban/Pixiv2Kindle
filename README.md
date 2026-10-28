@@ -85,7 +85,7 @@ SMTP_FROM="與寄件者信箱相同的 Sender Address"
 TRANSLATION_PROVIDER="gemini" # 目前支援 "gemini" 或 "noop"
 GEMINI_API_KEY="你的 Gemini API Key"
 GEMINI_MODEL="gemini-2.5-flash"
-GEMINI_MAX_CHARS_PER_BATCH=4000 # 控制每個批次被打包送給翻譯的字元上限以提升翻譯品質
+GEMINI_MAX_CHARS_PER_BATCH=3500 # 控制每個批次被打包送給翻譯的字元上限以提升翻譯品質
 
 # --- FastAPI 基礎配置 ---
 INTERNAL_API_TOKEN="自己亂數產生的一個密碼，保護 API 被除了 Worker 以外的人呼叫"
@@ -182,6 +182,11 @@ INTERNAL_API_TOKEN="自己亂數產生的一個密碼，保護 API 被除了 Wor
   ```
   /pixiv2kindle novel:12345678 translate:True target_lang:zh-TW
   ```
+- **逐行翻譯模式**（適合只用單一 `\n` 斷行、沒有空白行分段的作者）：
+  ```
+  /pixiv2kindle novel:12345678 translate:True per_line:True
+  ```
+  預設關閉。開啟後 splitter 會以 `\n+` 切割，把每個換行當成獨立段落進入翻譯流程，避免整段被視為單一巨大區塊。
 
 祝您閱讀愉快！
 

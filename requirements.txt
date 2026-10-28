@@ -35,3 +35,4 @@ eval_type_backport>=0.2.0
 
 # GCP Cloud Tasks (M2)
 google-cloud-tasks>=2.16.0
+google-auth>=2.0.0  # Vertex AI ADC (OAuth)

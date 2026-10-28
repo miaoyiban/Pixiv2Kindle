@@ -19,6 +19,9 @@ from __future__ import annotations
 import asyncio
 import re
 
+import google.auth
+import google.auth.credentials
+import google.auth.transport.requests
 import httpx
 from loguru import logger
 
@@ -95,6 +98,59 @@ _MAX_BACKOFF_MS = 8000
 _MAX_RETRIES = 3
 
 
+class VertexTokenProvider:
+    """Manage Cloud OAuth credentials for Vertex AI calls.
+
+    Caches Application Default Credentials and refreshes the access token
+    only when it has expired (~1h). An asyncio lock makes it safe for the
+    concurrent batches to share one credentials object without duplicate
+    refreshes.
+    """
+
+    _SCOPES = ["https://www.googleapis.com/auth/cloud-platform"]
+
+    def __init__(self, *, project_id: str = "") -> None:
+        self._explicit_project = project_id
+        self._detected_project: str | None = None
+        self._creds: google.auth.credentials.Credentials | None = None
+        self._lock = asyncio.Lock()
+
+    async def token(self, *, force_refresh: bool = False) -> str:
+        """Return a valid access token, refreshing on demand.
+
+        ``force_refresh=True`` forces a refresh even if the cached token still
+        looks valid — used after a 401 response to ensure a stale token is
+        replaced immediately.
+        """
+        async with self._lock:
+            if self._creds is None:
+                self._creds, self._detected_project = await asyncio.to_thread(
+                    google.auth.default, scopes=self._SCOPES
+                )
+            if force_refresh or not self._creds.valid:
+                await asyncio.to_thread(
+                    self._creds.refresh,
+                    google.auth.transport.requests.Request(),
+                )
+            return self._creds.token
+
+    @property
+    def project_id(self) -> str:
+        """Project ID: explicit override wins, else auto-detected.
+
+        Auto-detection happens during the first ``token()`` call, so call
+        ``token()`` before reading this when relying on detection.
+        """
+        if self._explicit_project:
+            return self._explicit_project
+        if self._detected_project:
+            return self._detected_project
+        raise TranslationError(
+            "Vertex project ID not set and could not be auto-detected",
+            user_message="Vertex AI 專案 ID 無法自動偵測，請設定 VERTEX_PROJECT_ID",
+        )
+
+
 class GeminiTranslationProvider:
     """Translate blocks using Google Gemini API with delimiter protocol."""
 
@@ -107,13 +163,28 @@ class GeminiTranslationProvider:
         max_chars_per_batch: int = 3500,
         timeout_seconds: float = 180,
         max_concurrent_batches: int = 3,
+        backend: str = "api_key",
+        vertex_project_id: str = "",
+        vertex_location: str = "global",
     ) -> None:
+        if backend not in ("api_key", "vertex"):
+            raise ValueError(
+                f"Unknown backend {backend!r}; expected 'api_key' or 'vertex'"
+            )
         self._api_key = api_key
         self._model = model
         self._max_blocks = max_blocks_per_request
         self._max_chars = max_chars_per_batch
         self._timeout = timeout_seconds
         self._max_concurrent = max_concurrent_batches
+        self._backend = backend
+        self._vertex_location = vertex_location  # used directly in _build_url
+        # vertex_project_id is owned by _token_provider
+        self._token_provider = (
+            VertexTokenProvider(project_id=vertex_project_id)
+            if backend == "vertex"
+            else None
+        )
 
     # ── Public API ─────────────────────────────────────
 
@@ -236,20 +307,39 @@ class GeminiTranslationProvider:
 
         return batches
 
+    # ── Endpoint URL ───────────────────────────────────
+
+    def _build_url(self) -> str:
+        """Build the generateContent URL for the active backend."""
+        if self._backend == "vertex":
+            project = self._token_provider.project_id
+            loc = self._vertex_location
+            host = (
+                "https://aiplatform.googleapis.com"
+                if loc == "global"
+                else f"https://{loc}-aiplatform.googleapis.com"
+            )
+            return (
+                f"{host}/v1/projects/{project}/locations/{loc}"
+                f"/publishers/google/models/{self._model}:generateContent"
+            )
+        return f"{_GEMINI_API_BASE}/{self._model}:generateContent?key={self._api_key}"
+
     # ── HTTP with retry ────────────────────────────────
 
     async def _fetch_with_retry(
         self,
         url: str,
         payload: dict,
+        headers: dict[str, str],
     ) -> dict:
-        """POST to Gemini API with retry on 429 / 5xx / timeout."""
+        """POST to the active backend with retry on 429 / 5xx / timeout."""
         attempt = 0
 
         while attempt <= _MAX_RETRIES:
             try:
                 async with httpx.AsyncClient(timeout=self._timeout) as client:
-                    resp = await client.post(url, json=payload)
+                    resp = await client.post(url, json=payload, headers=headers)
 
                 # 5xx server error — retry
                 if 500 <= resp.status_code < 600:
@@ -297,6 +387,24 @@ class GeminiTranslationProvider:
                         await asyncio.sleep(int(retry_after) + 0.1)
                     else:
                         await self._backoff(attempt)
+                    attempt += 1
+                    continue
+
+                # 401 on Vertex: token likely expired mid-request — force a
+                # fresh token, swap the Authorization header, and retry.
+                if resp.status_code == 401 and self._backend == "vertex":
+                    logger.warning(
+                        "[gemini] 401 Unauthorized on Vertex (attempt {}/{}) — refreshing token",
+                        attempt + 1, _MAX_RETRIES + 1,
+                    )
+                    if attempt >= _MAX_RETRIES:
+                        raise TranslationError(
+                            "Vertex API unauthorized after retries (HTTP 401)",
+                            user_message="翻譯服務授權失敗，請確認 service account 權限",
+                        )
+                    new_token = await self._token_provider.token(force_refresh=True)
+                    headers["Authorization"] = f"Bearer {new_token}"
+                    await self._backoff(attempt)
                     attempt += 1
                     continue
 
@@ -374,7 +482,11 @@ class GeminiTranslationProvider:
         target_lang: str,
     ) -> list[str]:
         """Send one batch to the Gemini API using delimiter protocol."""
-        url = f"{_GEMINI_API_BASE}/{self._model}:generateContent?key={self._api_key}"
+        headers: dict[str, str] = {}
+        if self._backend == "vertex":
+            token = await self._token_provider.token()
+            headers["Authorization"] = f"Bearer {token}"
+        url = self._build_url()
 
         # Build system prompt.
         # Order: stable base → conditional line-break rule → batch-level
@@ -418,7 +530,7 @@ class GeminiTranslationProvider:
 
         # ── Call API with retry ────────────────────────
         try:
-            data = await self._fetch_with_retry(url, payload)
+            data = await self._fetch_with_retry(url, payload, headers)
             text = self._extract_text(data)
         except TranslationError as exc:
             exc_str = str(exc).lower()
@@ -451,11 +563,13 @@ class GeminiTranslationProvider:
         meta = data.get("usageMetadata", {})
         logger.info(
             "[gemini] Response: inputTokens={}, outputTokens={}, "
-            "cachedTokens={}, finishReason={}",
+            "cachedTokens={}, finishReason={} batchSize={} textLen={}",
             meta.get("promptTokenCount", 0),
             meta.get("candidatesTokenCount", 0),
             meta.get("cachedContentTokenCount", 0),
             (data.get("candidates") or [{}])[0].get("finishReason", "unknown"),
+            len(batch),
+            len(text),
         )
 
         # ── Parse delimiter protocol ──────────────────
@@ -469,11 +583,22 @@ class GeminiTranslationProvider:
         parts = [_SEQ_MARKER_GLOBAL_RE.sub("", p).strip() for p in parts]
 
         if len(parts) != len(batch):
+            sep_hits = len(_SEP_RE.findall(text))
+            marker_hits = len(_SEQ_MARKER_GLOBAL_RE.findall(text))
             logger.warning(
-                "[gemini] Segment mismatch: expected {}, got {}. "
-                "Falling back to per-segment translation.",
+                "[gemini] Segment mismatch: expected={} got={} sepHits={} markerHits={}\n"
+                "         user_text head (300): {!r}\n"
+                "         user_text tail (200): {!r}\n"
+                "         response head (500): {!r}\n"
+                "         response tail (300): {!r}",
                 len(batch),
                 len(parts),
+                sep_hits,
+                marker_hits,
+                user_text[:300],
+                user_text[-200:],
+                text[:500],
+                text[-300:],
             )
             return await self._per_segment_fallback(batch, target_lang)
 

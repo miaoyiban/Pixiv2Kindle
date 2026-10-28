@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     gemini_model: str = "gemini-3.1-flash-lite"
     gemini_max_chars_per_batch: int = 3500
+    gemini_backend: str = "api_key"  # "api_key" | "vertex"
+    vertex_project_id: str = ""      # 空字串 = 自動偵測
+    vertex_location: str = "global"
     openai_api_key: str = ""
     fail_on_translation_error: bool = False
 
