@@ -158,7 +158,7 @@ class GeminiTranslationProvider:
         self,
         *,
         api_key: str,
-        model: str = "gemini-2.5-flash",
+        model: str = "gemini-3.1-flash-lite",
         max_blocks_per_request: int = 20,
         max_chars_per_batch: int = 3500,
         timeout_seconds: float = 180,

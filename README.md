@@ -12,7 +12,7 @@
 
 ## 功能特色
 - **Pixiv 小說下載**：支援透過網址或小說 ID 進行載入。
-- **高品質的 AI 翻譯**：支援透過 Google Gemini 模型 (gemini-2.5-flash / gemini-3.1 等) 進行翻譯，內建完善的批次處理與分段重試機制，大幅降低長篇小說漏段的機率。
+- **高品質的 AI 翻譯**：支援透過 Google Gemini 模型 (預設 gemini-3.1-flash-lite) 進行翻譯，內建完善的批次處理與分段重試機制，大幅降低長篇小說漏段的機率。
 - **雙語 EPUB 製作**：精美的雙語對照排版（日文原文 / 繁體中文譯文）。
 - **直送 Kindle**：產生 EPUB 後自動透過 SMTP 發送到使用者的 `Send to Kindle` 信箱。
 - **狀態即時回報**：任務處理完成後自動在 Discord 中 Follow-up 回報執行時間與結果。
@@ -84,7 +84,7 @@ SMTP_FROM="與寄件者信箱相同的 Sender Address"
 # --- Translation ---
 TRANSLATION_PROVIDER="gemini" # 目前支援 "gemini" 或 "noop"
 GEMINI_API_KEY="你的 Gemini API Key"
-GEMINI_MODEL="gemini-2.5-flash"
+GEMINI_MODEL="gemini-3.1-flash-lite"
 GEMINI_MAX_CHARS_PER_BATCH=3500 # 控制每個批次被打包送給翻譯的字元上限以提升翻譯品質
 
 # --- FastAPI 基礎配置 ---
