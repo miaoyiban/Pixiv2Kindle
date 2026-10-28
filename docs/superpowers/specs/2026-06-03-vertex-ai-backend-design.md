@@ -106,8 +106,8 @@ mock 掉 `google.auth.default` 與 credentials 物件，不做真實網路呼叫
 ## 部署前置作業（GCP，程式之外，由使用者執行）
 
 1. 啟用 Vertex AI API：
-   `gcloud services enable aiplatform.googleapis.com --project=pixiv2kindle-bot`
-2. 授權 Cloud Run service account（`371642369540-compute@developer.gserviceaccount.com`）
+   `gcloud services enable aiplatform.googleapis.com --project=<PROJECT_ID>`
+2. 授權 Cloud Run service account（`<PROJECT_NUMBER>-compute@developer.gserviceaccount.com`）
    `roles/aiplatform.user`。
 3. 部署時設環境變數 `GEMINI_BACKEND=vertex`。
 4. 本機測試需先 `gcloud auth application-default login`。
